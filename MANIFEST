@@ -2,3 +2,4 @@ README
 MANIFEST
 Makefile.PL
 script/lntree
+lntree.spec
