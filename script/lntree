@@ -1,0 +1,261 @@
+#!/usr/bin/perl -w
+my $RCS_Id = '$Id: lntree.pl,v 1.8 1999-03-05 14:08:56+01 jv Exp $ ';
+
+# Author          : Johan Vromans
+# Created On      : Nov 20 1993
+# Last Modified By: Johan Vromans
+# Last Modified On: Fri Mar  5 14:05:55 1999
+# Update Count    : 54
+# Status          : Ok
+
+# Compare two directories, and link all files which are identical.
+# For a cluster of directories, specify the NEW directory first
+
+################ Common stuff ################
+
+use strict;
+use Getopt::Long;
+use IO;
+
+my $my_package = "Sciurix";
+my ($my_name, $my_version) = $RCS_Id =~ /: (.+).pl,v ([\d.]+)/;
+$my_version .= "*" if length('$Locker:  $ ') > 12;
+
+# For MakeMaker:
+my $VERSION;
+($VERSION) = '$Revision: 1.8 $ ' =~ /: ([\d.]+)/;
+
+################ Program parameters ################
+
+my $recurse = 1;
+my $trace = 0;
+my $debug = 0;
+my $verbose = 0;
+options ();
+$trace = $trace | $debug;
+
+################ Presets ################
+
+my $TMPDIR = $ENV{TMPDIR} || "/usr/tmp";
+$|=1;		# because we intersperse prints and commands
+
+################ The Process ################
+
+# Check args && fetch names.
+my $newdir;
+my $refdir;
+if ( @ARGV != 2
+    || (!( -d ($refdir = shift(@ARGV)) && -d ($newdir = shift(@ARGV))))) {
+    usage ();
+}
+
+do_dirs ($newdir, $refdir, "");
+
+################ Subroutines ################
+
+sub do_dirs ($$$) {
+    my ($newdir, $refdir, $indent) = @_;
+
+    # Get all files in the new dir. Use readdir since it is faster than
+    # globbing, but also because we need to include .-files.
+    local (*NEWDIR);
+    opendir (NEWDIR, $newdir) || die ("$newdir: $!\n");
+    my (@all) = readdir (NEWDIR);
+    closedir (NEWDIR);
+
+    for my $file ( @all ) {
+	# Skip self and parent.
+	next if $file eq "." || $file eq "..";
+	my $ok = 1;
+
+	# Get stat info for both files
+	my @stat1 = stat ("$newdir/$file");
+	if ( @stat1 == 0 ) {
+	    print ($indent, "$newdir/$file ... $! - skipped\n");
+	    $ok = 0;
+	}
+	my @stat2 = stat ("$refdir/$file");
+	if ( @stat2 == 0 ) {
+	    print ($indent, "$refdir/$file ... $! - skipped\n");
+	    $ok = 0;
+	}
+	next unless $ok;
+
+	print ($indent, "$newdir/$file ... ");
+
+	if ( -d "$newdir/$file" && -d "$refdir/$file" ) {
+	    if (($stat1[0] == $stat2[0]) && ($stat1[1] == $stat2[1])) {
+		print ("directory ... identical to $refdir/$file\n");
+		next;
+	    }
+	    else {
+		print ("directory ... recursing\n");
+		do_dirs ("$newdir/$file", "$refdir/$file", "$indent  ");
+		next;
+	    }
+	}
+
+	if ( ! -f "$newdir/$file" ) {
+	    print ("not a plain file - skipped\n");
+	    next;
+	}
+	if ( ! -f "$refdir/$file" ) {
+	    print ("not in $refdir\n");
+	    next;
+	}
+
+	# Quick check on size, if equal: use cmp
+	if (($stat1[7] != $stat2[7])
+	    || cmp_sub ("$newdir/$file", "$refdir/$file")) {
+	    print ("differ\n");
+	    next;
+	}
+
+	# Already linked? Compare dev/inode numbers
+	if (($stat1[0] == $stat2[0]) && ($stat1[1] == $stat2[1])) {
+	    print ("identical to $refdir/$file\n");
+	    next;
+	}
+
+	# Okay, let's link
+	$SIG{INT} = "IGNORE";
+	if ( unlink ("$newdir/$file")
+	    && link ("$refdir/$file", "$newdir/$file") ) {
+	    $SIG{INT} = "DEFAULT";
+	    print ("linked to $refdir/$file\n");
+	    next;
+	}
+	$SIG{INT} = "DEFAULT";
+
+	print ("$!\n");
+    }
+}
+
+sub cmp_sub {
+    my ($old, $new) = @_;
+    my $ofh = new IO::File;
+    my $nfh = new IO::File;
+    unless ( $ofh->open ($old, 0 ) ) {
+	print STDERR ("$old: $!\n");
+	return 1;
+    }
+    unless ( $nfh->open ($new, 0) ) {
+	print STDERR ("$new: $!\n");
+	return 1;
+    }
+    my ($buf1, $buf2);
+    my ($len1, $len2);
+    while ( 1 ) {
+	$len1 = $ofh->sysread ($buf1, 10240);
+	$len2 = $nfh->sysread ($buf2, 10240);
+	return 0 if $len1 == $len2 && $len1 == 0;
+	return 1 if $len1 != $len2 || ( $len1 && $buf1 ne $buf2 );
+    }
+}
+
+sub options {
+    my $help = 0;		# handled locally
+    my $ident = 0;		# handled locally
+
+    # Process options.
+    usage ()
+      unless GetOptions (ident => \$ident,
+			 verbose => \$verbose,
+			 "recurse!" => \$recurse,
+			 trace => \$trace,
+			 help => \$help,
+			 debug => \$debug)
+	&& !$help;
+
+    print STDERR ("This is $my_package [$my_name $my_version]\n")
+      if $ident;
+}
+
+sub usage {
+    print STDERR <<EndOfUsage;
+This is $my_package [$my_name $my_version]
+Usage: $0 [options] old-dir new-dir
+    -[no]recurse	recursive (enabled by default)
+    -help		this message
+    -ident		show identification
+    -verbose		verbose information
+EndOfUsage
+    exit 1;
+}
+
+################ Documentation ################
+
+=head1 NAME
+
+lntree - link identical files in source trees
+
+=head1 SYNOPSIS
+
+lntree [options] old-dir new-dir
+
+ Options:
+   -[no]recurse         recursive (enabled by default)
+   -ident		show identification
+   -help		brief help message
+
+=head1 DESCRIPTION
+
+B<lntree> will examine all files in two source trees and link the files
+that are equal. To be precise: if two files are equal (same size, same
+contents), the one in directory I<new-dir> is replaced by a link to
+the file in I<old-dir>.
+
+This results in a substantial saving of disk space, for example when
+multiple versions of the same source tree need to be kept on-line.
+For best results, use the program like this:
+
+    lntree pkg-2.14 pkg-2.15
+    lntree pkg-2.15 pkg-2.16
+    lntree pkg-2.16 pkg-2.17
+
+and so on.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<->[B<no>]B<recurse>
+
+Recurses through sub-directories. This is enabled by default.
+
+=item B<-help>
+
+Prints a brief help message and exits.
+
+=item B<-ident>
+
+Prints program identification.
+
+=back
+
+=head1 WARNING
+
+Some systems have a B<lndir> command with different semantics. Make
+sure you are executing the right program!
+
+=head1 AUTHOR AND CREDITS
+
+Johan Vromans (jvromans@squirrel.nl) wrote this module.
+
+=head1 COPYRIGHT AND DISCLAIMER
+
+This program is Copyright 1993,1999 by Squirrel Consultancy. All
+rights reserved.
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of either: a) the GNU General Public License as
+published by the Free Software Foundation; either version 1, or (at
+your option) any later version, or b) the "Artistic License" which
+comes with Perl.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See either the
+GNU General Public License or the Artistic License for more details.
+
+=cut
