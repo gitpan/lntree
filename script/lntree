@@ -1,11 +1,11 @@
 #!/usr/bin/perl -w
-my $RCS_Id = '$Id: lntree.pl,v 1.8 1999-03-05 14:08:56+01 jv Exp $ ';
+my $RCS_Id = '$Id: lntree.pl,v 1.9 1999-03-07 15:27:11+01 jv Exp $ ';
 
 # Author          : Johan Vromans
 # Created On      : Nov 20 1993
 # Last Modified By: Johan Vromans
-# Last Modified On: Fri Mar  5 14:05:55 1999
-# Update Count    : 54
+# Last Modified On: Sun Mar  7 15:26:48 1999
+# Update Count    : 55
 # Status          : Ok
 
 # Compare two directories, and link all files which are identical.
@@ -23,7 +23,7 @@ $my_version .= "*" if length('$Locker:  $ ') > 12;
 
 # For MakeMaker:
 my $VERSION;
-($VERSION) = '$Revision: 1.8 $ ' =~ /: ([\d.]+)/;
+($VERSION) = '$Revision: 1.9 $ ' =~ /: ([\d.]+)/;
 
 ################ Program parameters ################
 
@@ -68,7 +68,7 @@ sub do_dirs ($$$) {
 	next if $file eq "." || $file eq "..";
 	my $ok = 1;
 
-	# Get stat info for both files
+	# Get stat info for both files.
 	my @stat1 = stat ("$newdir/$file");
 	if ( @stat1 == 0 ) {
 	    print ($indent, "$newdir/$file ... $! - skipped\n");
@@ -104,20 +104,20 @@ sub do_dirs ($$$) {
 	    next;
 	}
 
-	# Quick check on size, if equal: use cmp
+	# Quick check on size, if equal: compare.
 	if (($stat1[7] != $stat2[7])
-	    || cmp_sub ("$newdir/$file", "$refdir/$file")) {
+	    || differ ("$newdir/$file", "$refdir/$file")) {
 	    print ("differ\n");
 	    next;
 	}
 
-	# Already linked? Compare dev/inode numbers
+	# Already linked? Compare dev/inode numbers.
 	if (($stat1[0] == $stat2[0]) && ($stat1[1] == $stat2[1])) {
 	    print ("identical to $refdir/$file\n");
 	    next;
 	}
 
-	# Okay, let's link
+	# Okay, let's link.
 	$SIG{INT} = "IGNORE";
 	if ( unlink ("$newdir/$file")
 	    && link ("$refdir/$file", "$newdir/$file") ) {
@@ -131,7 +131,9 @@ sub do_dirs ($$$) {
     }
 }
 
-sub cmp_sub {
+sub differ {
+    # Perl version of the 'cmp' program.
+    # Returns 1 if the files differ, 0 if the contents are equal.
     my ($old, $new) = @_;
     my $ofh = new IO::File;
     my $nfh = new IO::File;
@@ -159,12 +161,12 @@ sub options {
 
     # Process options.
     usage ()
-      unless GetOptions (ident => \$ident,
-			 verbose => \$verbose,
-			 "recurse!" => \$recurse,
-			 trace => \$trace,
-			 help => \$help,
-			 debug => \$debug)
+      unless GetOptions ("ident"	=> \$ident,
+			 "verbose"	=> \$verbose,
+			 "recurse!"	=> \$recurse,
+			 "trace"	=> \$trace,
+			 "help"		=> \$help,
+			 "debug"	=> \$debug)
 	&& !$help;
 
     print STDERR ("This is $my_package [$my_name $my_version]\n")

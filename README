@@ -1,4 +1,4 @@
-'lntree new-dir old-dir' recursively examines all files in the two
+'lntree old-dir new-dir' recursively examines all files in the two
 source trees and link the files that are equal. To be precise: if two
 files are equal (same size, same contents), the one in directory
 new-dir is replaced by a link to the file in old-dir.
